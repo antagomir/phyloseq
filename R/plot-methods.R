@@ -826,6 +826,8 @@ plot_richness = function(physeq, x="samples", color=NULL, shape=NULL, title=NULL
 #'  \code{\link{phyloseq-package}} provides/uses an internal function
 #'  to build the key features of the \code{data.frame} prior to plot-build.
 #'
+#' @param show.density (Optional). Default \code{FALSE}. Logical. Show point density on the plot. 
+#'
 #' @return A \code{\link{ggplot}} plot object, graphically summarizing
 #'  the ordination result for the specified axes.
 #' 
@@ -839,6 +841,7 @@ plot_richness = function(physeq, x="samples", color=NULL, shape=NULL, title=NULL
 #'
 #' @import ggplot2
 #' @importFrom vegan wascores
+#' @importFrom MASS bandwidth.nrd
 #' @export
 #' @examples 
 #' # See other examples at
@@ -848,7 +851,7 @@ plot_richness = function(physeq, x="samples", color=NULL, shape=NULL, title=NULL
 #' gp_bray_pcoa = ordinate(GP, "CCA", "bray")
 #' plot_ordination(GP, gp_bray_pcoa, "samples", color="SampleType")
 plot_ordination = function(physeq, ordination, type="samples", axes=1:2,
-                            color=NULL, shape=NULL, label=NULL, title=NULL, justDF=FALSE){
+                            color=NULL, shape=NULL, label=NULL, title=NULL, justDF=FALSE, show.density=FALSE){
   if(length(type) > 1){
     warning("`type` can only be a single option,
             but more than one provided. Using only the first.")
@@ -1073,7 +1076,19 @@ plot_ordination = function(physeq, ordination, type="samples", axes=1:2,
     }
   }
   # Plot-building section
-  p <- ggplot(DF, ord_map) + geom_point(na.rm=TRUE)
+  p <- ggplot(DF, ord_map) 
+
+  # Add density estimate / @antagomir 1/2016
+  # Determine bandwidth for density estimation
+  if (show.density) {
+    bw.adjust <- 1
+    bw <- bw.adjust * c(bandwidth.nrd(DF[[x]]), bandwidth.nrd(DF[[y]]))  
+    p <- p + stat_density2d(aes(fill = ..density.., color = NULL, shape = NULL), geom = "raster", h = bw, contour = FALSE)
+    p <- p + scale_fill_gradient(low = "white", high = "black")
+  }
+
+  p <- p + geom_point(na.rm=TRUE)
+
   # split/facet color and shape can be anything in one or other.
   if( type=="split" ){
     # split-option requires a facet_wrap
