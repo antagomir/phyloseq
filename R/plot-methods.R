@@ -212,7 +212,7 @@ plot_network <- function(g, physeq=NULL, type="samples",
 	}
 
 	# Combine vertex and edge coordinate data.frames
-	graphDF   <- merge(melt(edgeDF, id="id"), vertDF, by = "value") 
+	graphDF   <- merge(reshape2::melt(edgeDF, id="id"), vertDF, by = "value") 
  
 	# Initialize the ggplot
 	p <- ggplot(vertDF, aes(x, y)) 
@@ -664,7 +664,7 @@ plot_richness = function(physeq, x="samples", color=NULL, shape=NULL, title=NULL
 	  x <- "samples"
 	}
 	# melt to display different alpha-measures separately
-	mdf = melt(DF, measure.vars=measures)
+	mdf = reshape2::melt(DF, measure.vars=measures)
   # Initialize the se column. Helpful even if not used.
   mdf$se <- NA_integer_
   if( length(ses) > 0 ){
@@ -826,6 +826,8 @@ plot_richness = function(physeq, x="samples", color=NULL, shape=NULL, title=NULL
 #'  \code{\link{phyloseq-package}} provides/uses an internal function
 #'  to build the key features of the \code{data.frame} prior to plot-build.
 #'
+#' @param show.density (Optional). Default \code{FALSE}. Logical. Show point density on the plot. 
+#'
 #' @return A \code{\link{ggplot}} plot object, graphically summarizing
 #'  the ordination result for the specified axes.
 #' 
@@ -839,6 +841,7 @@ plot_richness = function(physeq, x="samples", color=NULL, shape=NULL, title=NULL
 #'
 #' @import ggplot2
 #' @importFrom vegan wascores
+#' @importFrom MASS bandwidth.nrd
 #' @export
 #' @examples 
 #' # See other examples at
@@ -848,9 +851,10 @@ plot_richness = function(physeq, x="samples", color=NULL, shape=NULL, title=NULL
 #' gp_bray_pcoa = ordinate(GP, "CCA", "bray")
 #' plot_ordination(GP, gp_bray_pcoa, "samples", color="SampleType")
 plot_ordination = function(physeq, ordination, type="samples", axes=1:2,
-                            color=NULL, shape=NULL, label=NULL, title=NULL, justDF=FALSE){
+                            color=NULL, shape=NULL, label=NULL, title=NULL, justDF=FALSE, show.density=FALSE){
   if(length(type) > 1){
-    warning("`type` can only be a single option, but more than one provided. Using only the first.")
+    warning("`type` can only be a single option,
+            but more than one provided. Using only the first.")
     type <- type[[1]]
   }
   if(length(color) > 1){
@@ -906,9 +910,11 @@ plot_ordination = function(physeq, ordination, type="samples", axes=1:2,
   # Silently returns only the coordinate systems available.
   # e.g. sites-only, even if species requested.
   specDF = siteDF = NULL
-  trash1 = try({siteDF <- scores(ordination, choices = axes, display="sites", physeq=physeq)},
+  trash1 = try({siteDF <- scores(ordination, choices = axes, 
+                                 display="sites", physeq=physeq)},
                silent = TRUE)
-  trash2 = try({specDF <- scores(ordination, choices = axes, display="species", physeq=physeq)},
+  trash2 = try({specDF <- scores(ordination, choices = axes, 
+                                 display="species", physeq=physeq)},
                silent = TRUE)
   # Check that have assigned coordinates to the correct object
   siteSampIntx = length(intersect(rownames(siteDF), sample_names(physeq)))
@@ -1070,7 +1076,19 @@ plot_ordination = function(physeq, ordination, type="samples", axes=1:2,
     }
   }
   # Plot-building section
-  p <- ggplot(DF, ord_map) + geom_point(na.rm=TRUE)
+  p <- ggplot(DF, ord_map) 
+
+  # Add density estimate / @antagomir 1/2016
+  # Determine bandwidth for density estimation
+  if (show.density) {
+    bw.adjust <- 1
+    bw <- bw.adjust * c(bandwidth.nrd(DF[[x]]), bandwidth.nrd(DF[[y]]))  
+    p <- p + stat_density2d(aes(fill = ..density.., color = NULL, shape = NULL), geom = "raster", h = bw, contour = FALSE)
+    p <- p + scale_fill_gradient(low = "white", high = "black")
+  }
+
+  p <- p + geom_point(na.rm=TRUE)
+
   # split/facet color and shape can be anything in one or other.
   if( type=="split" ){
     # split-option requires a facet_wrap
@@ -1466,9 +1484,10 @@ psmelt = function(physeq){
   otutab = otu_table(physeq)
   if(!taxa_are_rows(otutab)){otutab <- t(otutab)}
   # Melt the OTU table: wide form to long form table
-  mdf = melt(as(otutab, "matrix"), value.name="Abundance")
+  mdf = reshape2::melt(as(otutab, "matrix"))
   colnames(mdf)[1] <- "OTU"
   colnames(mdf)[2] <- "Sample"
+  colnames(mdf)[3] <- "Abundance"
   # Row and Col names are coerced to integer or factor if possible.
   # Do not want this. Coerce these to character.
   # e.g. `OTU` should always be discrete, even if OTU ID values can be coerced to integer
@@ -2699,25 +2718,25 @@ plot_heatmap <- function(physeq, method="NMDS", distance="bray",
 #' @keywords internal
 #' @examples 
 #' # Typical use-case
-#' chunkReOrder(1:10, 5)
-#' # Default is to not modify the vector
-#' chunkReOrder(1:10)
-#' # Another example not starting at 1
-#' chunkReOrder(10:25, 22)
-#' # Should silently ignore the second element of `newstart`
-#' chunkReOrder(10:25, c(22, 11))
-#' # Should be able to handle `newstart` being the first argument already
-#' # without duplicating the first element at the end of `x`
-#' chunkReOrder(10:25, 10)
-#' all(chunkReOrder(10:25, 10) == 10:25)
-#' # This is also the default
-#' all(chunkReOrder(10:25) == 10:25)
-#' # An example with characters
-#' chunkReOrder(LETTERS, "G") 
-#' chunkReOrder(LETTERS, "B") 
-#' chunkReOrder(LETTERS, "Z") 
-#' What about when `newstart` is not in `x`? Return x as-is, throw warning.
-#' chunkReOrder(LETTERS, "g") 
+#' # chunkReOrder(1:10, 5)
+#' # # Default is to not modify the vector
+#' # chunkReOrder(1:10)
+#' # # Another example not starting at 1
+#' # chunkReOrder(10:25, 22)
+#' # # Should silently ignore the second element of `newstart`
+#' # chunkReOrder(10:25, c(22, 11))
+#' # # Should be able to handle `newstart` being the first argument already
+#' # # without duplicating the first element at the end of `x`
+#' # chunkReOrder(10:25, 10)
+#' # all(chunkReOrder(10:25, 10) == 10:25)
+#' # # This is also the default
+#' # all(chunkReOrder(10:25) == 10:25)
+#' # # An example with characters
+#' # chunkReOrder(LETTERS, "G") 
+#' # chunkReOrder(LETTERS, "B") 
+#' # chunkReOrder(LETTERS, "Z") 
+#' # # What about when `newstart` is not in `x`? Return x as-is, throw warning.
+#' # chunkReOrder(LETTERS, "g") 
 chunkReOrder = function(x, newstart = x[[1]]){
   pivot = match(newstart[1], x, nomatch = NA)
   # If pivot `is.na`, throw warning, return x as-is
